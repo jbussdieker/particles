@@ -18,9 +18,9 @@ endif
 CC = gcc
 CFLAGS = $(COMPILERFLAGS) $(INCLUDE)
 
-all: planets
-planets:main.o
+all: particle
+particle:main.o
 	$(CC) $(FRAMEWORK) $(CFLAGS) -o $@ $(LIBDIR) $< $(LIBRARIES)  
 clean:
-	rm -f planets main.o
+	rm -f particle main.o
 

@@ -26,92 +26,33 @@ GLfloat LightDiffuse[]=  { 0.5f, 0.5f, 0.5f, 1.0f };
 GLfloat LightPosition[]= { 2.0f, 2.0f, 5.0f, 1.0f };
 GLfloat LightColor[]= { 0.5f, 0.5f, 0.5f };
 
+const float PARTICLE_SIZE = 0.01f;
+const int NUM_PARTICLES = 10000;
+const int INITIAL_PARTICLE_SPREAD = 200;
+const float SPEED_DECAY = 0.0000005f;
+
+long Time1,Time2;
+long Ticks = 1;
+
 GLfloat distance;
 GLfloat pitch;
 
-typedef struct planet {
-	char name[50];
-	long diameter_km;
-	double x_au, y_au;
-	float color[3];
-	float speed; // KM/Sec
-	float avg_dist; // AU
-} planet;
+typedef struct SpriteInfo {
+	float xPos, yPos, zPos;
+	float xVec, yVec, zVec;
+	float r, g, b, life;
+} SpriteInfo;
 
-planet planets[] = {
-	{
-		.name = "Sun",
-		.diameter_km = 1377648,
-		.x_au = 0.0,
-		.y_au = 0.0,
-		.color = { 0.8f, 0.8f, 0.0f },
-		.speed = 0.0f,
-		.avg_dist = 0.0f,
-	},
-	{
-		.name = "Mercury",
-		.diameter_km = 4880,
-		.x_au = -0.387096774,
-		.y_au = 0.096774194,
-		.color = { 0.6f, 0.6f, 0.6f },
-		.speed = 47.8725f,
-		.avg_dist = 0.387f,
-	},
-	{
-		.name = "Venus",
-		.diameter_km = 12104,
-		.x_au = -0.774193548,
-		.y_au = -0.096774194,
-		.color = { 0.5f, 0.1f, 0.1f },
-		.speed = 35.0214f,
-		.avg_dist = 0.722f,
-	},
-	{
-		.name = "Earth",
-		.diameter_km = 12756,
-		.x_au = -0.387096774,
-		.y_au = -0.935483871,
-		.color = { 0.0f, 0.5f, 0.8f },
-		.speed = 29.7859f,
-		.avg_dist = 1.0f,
-	},
-	{
-		.name = "Mars",
-		.diameter_km = 6788,
-		.x_au = -0.580645161,
-		.y_au = -1.580645161,
-		.color = { 0.4f, 0.0f, 0.0f },
-		.speed = 24.1309f,
-		.avg_dist = 1.52f,
-	},
-	{
-		.name = "Vesta",
-		.diameter_km = 530,
-		.x_au = -0.483870968,
-		.y_au = 2.419354839,
-		.color = { 0.6f, 0.6f, 0.6f },
-		.speed = 0.0f,
-		.avg_dist = 0.0f,
-	},
-	{
-		.name = "Jupiter",
-		.diameter_km = 142740,
-		.x_au = -3.677419355,
-		.y_au = 3.516129032,
-		.color = { 0.5f, 0.5f, 0.5f },
-		.speed = 13.0697f,
-		.avg_dist = 5.20f,
-	},
-	{
-		.name = "Saturn",
-		.diameter_km = 120034,
-		.x_au = 4.0,
-		.y_au = -8.838709677,
-		.color = { 0.4f, 0.4f, 0.0f },
-		.speed = 9.6724f,
-		.avg_dist = 9.58f,
-	},
-};
+SpriteInfo Spr[10000];
+
+void InitParticles() {
+	int Index;
+	for (Index = 0; Index != NUM_PARTICLES; Index++) {
+		Spr[Index].life = 0.0f;
+		Spr[Index].r = 1.0f;
+		Spr[Index].b = 0.0f;
+	}
+}
 
 void InitGL(int Width, int Height)
 {
@@ -132,6 +73,8 @@ void InitGL(int Width, int Height)
     glLoadIdentity();
     gluPerspective(45.0f,(GLfloat)Width/(GLfloat)Height,0.1f,100.0f);
     glMatrixMode(GL_MODELVIEW);
+
+	InitParticles();
 }
 
 void ReSizeGLScene(int Width, int Height)
@@ -146,44 +89,87 @@ void ReSizeGLScene(int Width, int Height)
     glMatrixMode(GL_MODELVIEW);
 }
 
-void DrawPlanet(planet *planet) {
-	float speed;
-	float draw_size;
+void CalcParticleMovement() {
+	int Index;
+	for (Index = 0; Index != NUM_PARTICLES; Index++) {
+		if (Spr[Index].life > 0.0f) {
+			Spr[Index].xPos += (Spr[Index].xVec * Ticks);
+			Spr[Index].yPos += (Spr[Index].yVec * Ticks);
+			Spr[Index].zPos += (Spr[Index].zVec * Ticks);
+			Spr[Index].yVec -= (SPEED_DECAY * Ticks);
 
-	speed = (float)planet->speed*yrot;
-	if (planet->avg_dist > 0.0f) {
-		speed /= planet->avg_dist;
+			if(Spr[Index].xPos > -10.0f && Spr[Index].xPos < 10.0f &&
+				Spr[Index].zPos > -10.0f && Spr[Index].zPos < 10.0f) {
+				if(Spr[Index].yPos < PARTICLE_SIZE) {
+					Spr[Index].yPos = PARTICLE_SIZE;
+					Spr[Index].life -= 0.01f;
+					Spr[Index].yVec *= -0.6f;
+				}
+			}
+			Spr[Index].life -= (0.0001f * Ticks);
+		} else {
+			Spr[Index].xPos = 0.0f;
+			Spr[Index].yPos = PARTICLE_SIZE;
+			Spr[Index].zPos = 0.0f;
+
+			// Get a random spread and direction
+			int MaxSpread = 5;
+			float Spread=(float)(rand()%MaxSpread)/10000.0f;
+			float Angle=(float)(rand()%157)/100.0f; // Quarter circle
+
+			// Calculate X and Z vectors
+			Spr[Index].xVec=cos(Angle)*Spread;
+			Spr[Index].zVec=sin(Angle)*Spread;
+
+			// Randomly reverse X and Z vector to complete the circle
+			if(rand()%2)
+				Spr[Index].xVec= - Spr[Index].xVec;
+			if(rand()%2)
+				Spr[Index].zVec= - Spr[Index].zVec;
+
+			// Get a random initial speed
+			Spr[Index].yVec=(float)(rand()%500)/10000.0f;
+
+			// Get a random life and 'yellowness'
+			Spr[Index].life=(float)(rand()%100)/100.0f;
+			Spr[Index].g=0.2f+((float)(rand()%50)/100.0f);
+		}
 	}
-	draw_size = (double)planet->diameter_km / 149597870.0;
-
-	float draw_x = planet->x_au;
-	float draw_y = planet->y_au;
-
-	draw_size *= 50.0f;
-	if (planet == &planets[0]) {
-		draw_size /= 10.0f;
-	}
-
-	glMaterialfv(GL_FRONT, GL_AMBIENT, planet->color);
-	glMaterialfv(GL_FRONT, GL_SPECULAR, planet->color);
-
-	glRotatef(speed, 0.0f, 0.0f, 0.001f);
-	glTranslatef(draw_x, draw_y, 0.0f);
-	glutSolidSphere(draw_size, 20, 20);
-	glTranslatef(-draw_x, -draw_y, 0.0f);
-	glRotatef(speed, 0.0f, 0.0f, -0.001f);
-
 }
 
-void DrawPlanets() {
-	int i;
-	for (i = 0; i < sizeof(planets) / sizeof(planet); i++) {
-		DrawPlanet(&planets[i]);
+void DrawParticles() {
+	//glEnable(GL_BLEND);
+	glDepthMask(GL_FALSE);
+
+	// Draw the particles
+	int Index;
+	int MaxParticles = 500;
+	for(Index=0;Index!=MaxParticles;Index++) {
+		glPushMatrix();
+
+		// Place the quad and rotate to face the viewer
+		glColor4f(Spr[Index].r,Spr[Index].g,Spr[Index].b,Spr[Index].life);
+		glTranslatef(Spr[Index].xPos,Spr[Index].yPos,Spr[Index].zPos);
+ 
+		glBegin(GL_QUADS);
+			glTexCoord2f(0.0f,0.0f); glVertex3f(-PARTICLE_SIZE, PARTICLE_SIZE,0.0f);
+			glTexCoord2f(0.0f,1.0f); glVertex3f(-PARTICLE_SIZE,-PARTICLE_SIZE,0.0f);
+			glTexCoord2f(1.0f,1.0f); glVertex3f( PARTICLE_SIZE,-PARTICLE_SIZE,0.0f);
+			glTexCoord2f(1.0f,0.0f); glVertex3f( PARTICLE_SIZE, PARTICLE_SIZE,0.0f);
+		glEnd();
+
+		glPopMatrix();
 	}
+
+	glDepthMask(GL_TRUE);
 }
 
 void DrawGLScene()
 {
+	// Move
+	CalcParticleMovement();
+
+	// Draw
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     glLoadIdentity();
@@ -193,9 +179,7 @@ void DrawGLScene()
 	glRotatef(-65.0f+pitch, 1.0f, 0.0f, 0.0f);
 
 	// Scene
-	DrawPlanets();
-
-    yrot+=0.001f; // TODO: Computer speed dependent
+	DrawParticles();
 
     glutSwapBuffers();
 }
